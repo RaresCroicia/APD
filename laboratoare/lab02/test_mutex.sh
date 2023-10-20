@@ -6,4 +6,4 @@ then
     exit
 fi
 
-for i in {1..1000}; do ./mutex; done
+for i in {1..100000}; do ./mutex; done
