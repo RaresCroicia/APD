@@ -4,10 +4,10 @@ example: example.c
 	gcc example.c -o example -lpthread
 
 add_serial: add_serial.c
-	gcc add_serial.c -o add_serial
+	gcc add_serial.c -o add_serial -lrt
 
 add_parallel: add_parallel.c
-	gcc add_parallel.c -o add_parallel -lpthread
+	gcc add_parallel.c -o add_parallel -lpthread -lrt
 
 .PHONY: clean
 clean:
