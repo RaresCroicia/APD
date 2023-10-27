@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <sys/time.h>
 
 #define CONTOUR_CONFIG_COUNT    16
 #define FILENAME_MAX_SIZE       50
@@ -16,16 +15,10 @@
 
 #define CLAMP(v, min, max) if(v < min) { v = min; } else if(v > max) { v = max; }
 
-struct timeval start, end;
-long seconds, useconds;
-double time_init_countour_map, time_update_image, time_sample_grid, time_march, time_rescale_image, time_write_ppm;
-
-
 // Creates a map between the binary configuration (e.g. 0110_2) and the corresponding pixels
 // that need to be set on the output image. An array is used for this map since the keys are
 // binary numbers in 0-15. Contour images are located in the './contours' directory.
 ppm_image **init_contour_map() {
-    gettimeofday(&start, NULL);
     ppm_image **map = (ppm_image **)malloc(CONTOUR_CONFIG_COUNT * sizeof(ppm_image *));
     if (!map) {
         fprintf(stderr, "Unable to allocate memory\n");
@@ -37,17 +30,13 @@ ppm_image **init_contour_map() {
         sprintf(filename, "./contours/%d.ppm", i);
         map[i] = read_ppm(filename);
     }
-    gettimeofday(&end, NULL);
-    seconds = end.tv_sec - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    time_init_countour_map += seconds * 1000000 + useconds / 1000000.0;
+
     return map;
 }
 
 // Updates a particular section of an image with the corresponding contour pixels.
 // Used to create the complete contour image.
 void update_image(ppm_image *image, ppm_image *contour, int x, int y) {
-    gettimeofday(&start, NULL);
     for (int i = 0; i < contour->x; i++) {
         for (int j = 0; j < contour->y; j++) {
             int contour_pixel_index = contour->x * i + j;
@@ -58,10 +47,6 @@ void update_image(ppm_image *image, ppm_image *contour, int x, int y) {
             image->data[image_pixel_index].blue = contour->data[contour_pixel_index].blue;
         }
     }
-    gettimeofday(&end, NULL);
-    seconds = end.tv_sec - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    time_update_image += seconds * 1000000 + useconds / 1000000.0;
 }
 
 // Corresponds to step 1 of the marching squares algorithm, which focuses on sampling the image.
@@ -69,7 +54,6 @@ void update_image(ppm_image *image, ppm_image *contour, int x, int y) {
 // pixel values compare to the `sigma` reference value. The points are taken at equal distances
 // in the original image, based on the `step_x` and `step_y` arguments.
 unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned char sigma) {
-    gettimeofday(&start, NULL);
     int p = image->x / step_x;
     int q = image->y / step_y;
 
@@ -100,6 +84,7 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
             }
         }
     }
+    grid[p][q] = 0;
 
     // last sample points have no neighbors below / to the right, so we use pixels on the
     // last row / column of the input image for them
@@ -125,10 +110,6 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
             grid[p][j] = 1;
         }
     }
-    gettimeofday(&end, NULL);
-    seconds = end.tv_sec - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    time_sample_grid += seconds * 1000000 + useconds / 1000000.0;
 
     return grid;
 }
@@ -138,7 +119,6 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
 // sample fragment of the original image and replaces the pixels in the original image with
 // the pixels of the corresponding contour image accordingly.
 void march(ppm_image *image, unsigned char **grid, ppm_image **contour_map, int step_x, int step_y) {
-    gettimeofday(&start, NULL);
     int p = image->x / step_x;
     int q = image->y / step_y;
 
@@ -148,10 +128,6 @@ void march(ppm_image *image, unsigned char **grid, ppm_image **contour_map, int 
             update_image(image, contour_map[k], i * step_x, j * step_y);
         }
     }
-    gettimeofday(&end, NULL);
-    seconds = end.tv_sec - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    time_march += seconds * 1000000 + useconds / 1000000.0;
 }
 
 // Calls `free` method on the utilized resources.
@@ -172,7 +148,6 @@ void free_resources(ppm_image *image, ppm_image **contour_map, unsigned char **g
 }
 
 ppm_image *rescale_image(ppm_image *image) {
-    gettimeofday(&start, NULL);
     uint8_t sample[3];
 
     // we only rescale downwards
@@ -210,10 +185,7 @@ ppm_image *rescale_image(ppm_image *image) {
 
     free(image->data);
     free(image);
-    gettimeofday(&end, NULL);
-    seconds = end.tv_sec - start.tv_sec;
-    useconds = end.tv_usec - start.tv_usec;
-    time_rescale_image += seconds * 1000000 + useconds / 1000000.0;
+
     return new_image;
 }
 
@@ -243,12 +215,6 @@ int main(int argc, char *argv[]) {
     write_ppm(scaled_image, argv[2]);
 
     free_resources(scaled_image, contour_map, grid, step_x);
-
-    printf("time_init_countour_map: %lf sec\n", time_init_countour_map * 1000000);
-    printf("time_update_image: %lf sec\n", time_update_image * 1000000);
-    printf("time_sample_grid: %lf sec\n", time_sample_grid * 1000000);
-    printf("time_march: %lf sec\n", time_march * 1000000);
-    // printf("time_rescale_image: %lf\n", time_rescale_image);
 
     return 0;
 }

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <math.h>
+#include <sys/time.h>
 #include <pthread.h>
 
 #define CONTOUR_CONFIG_COUNT    16
@@ -18,21 +18,26 @@
 #define CLAMP(v, min, max) if(v < min) { v = min; } else if(v > max) { v = max; }
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+// struct timeval start, end;
+// long seconds, useconds;
+// double time_init_countour_map, time_update_image, time_sample_grid, time_march, time_rescale_image, time_write_ppm;
 
 typedef struct {
     ppm_image *image;
-    unsigned char **grid;
-    ppm_image **contour_map;
     int step_x, step_y;
+    unsigned char sigma;
+    ppm_image **contour_map;
+    pthread_barrier_t *barrier;
+    pthread_mutex_t *mutex;
     int thread_id;
-    int thread_count;
-    // pthread_mutex_t *mutex;
+    int number_of_threads;
 } thread_arg_t;
 
 // Creates a map between the binary configuration (e.g. 0110_2) and the corresponding pixels
 // that need to be set on the output image. An array is used for this map since the keys are
 // binary numbers in 0-15. Contour images are located in the './contours' directory.
 ppm_image **init_contour_map() {
+    // gettimeofday(&start, NULL);
     ppm_image **map = (ppm_image **)malloc(CONTOUR_CONFIG_COUNT * sizeof(ppm_image *));
     if (!map) {
         fprintf(stderr, "Unable to allocate memory\n");
@@ -44,13 +49,17 @@ ppm_image **init_contour_map() {
         sprintf(filename, "./contours/%d.ppm", i);
         map[i] = read_ppm(filename);
     }
-
+    // gettimeofday(&end, NULL);
+    // seconds = end.tv_sec - start.tv_sec;
+    // useconds = end.tv_usec - start.tv_usec;
+    // time_init_countour_map += seconds * 1000000 + useconds / 1000000.0;
     return map;
 }
 
 // Updates a particular section of an image with the corresponding contour pixels.
 // Used to create the complete contour image.
 void update_image(ppm_image *image, ppm_image *contour, int x, int y) {
+    // gettimeofday(&start, NULL);
     for (int i = 0; i < contour->x; i++) {
         for (int j = 0; j < contour->y; j++) {
             int contour_pixel_index = contour->x * i + j;
@@ -61,15 +70,22 @@ void update_image(ppm_image *image, ppm_image *contour, int x, int y) {
             image->data[image_pixel_index].blue = contour->data[contour_pixel_index].blue;
         }
     }
+    // gettimeofday(&end, NULL);
+    // seconds = end.tv_sec - start.tv_sec;
+    // useconds = end.tv_usec - start.tv_usec;
+    // time_update_image += seconds * 1000000 + useconds / 1000000.0;
 }
 
 // Corresponds to step 1 of the marching squares algorithm, which focuses on sampling the image.
 // Builds a p x q grid of points with values which can be either 0 or 1, depending on how the
 // pixel values compare to the `sigma` reference value. The points are taken at equal distances
 // in the original image, based on the `step_x` and `step_y` arguments.
-unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned char sigma) {
+unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned char sigma, int thread_id, int number_of_threads) {
+    // gettimeofday(&start, NULL);
     int p = image->x / step_x;
     int q = image->y / step_y;
+    int start = thread_id * p / number_of_threads;
+    int end = MIN((thread_id + 1) * p / number_of_threads, p);
 
     unsigned char **grid = (unsigned char **)malloc((p + 1) * sizeof(unsigned char*));
     if (!grid) {
@@ -85,7 +101,7 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
         }
     }
 
-    for (int i = 0; i < p; i++) {
+    for (int i = start; i < end; i++) {
         for (int j = 0; j < q; j++) {
             ppm_pixel curr_pixel = image->data[i * step_x * image->y + j * step_y];
 
@@ -98,7 +114,7 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
             }
         }
     }
-
+    grid[p][q] = 0;
     // last sample points have no neighbors below / to the right, so we use pixels on the
     // last row / column of the input image for them
     for (int i = 0; i < p; i++) {
@@ -123,6 +139,10 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
             grid[p][j] = 1;
         }
     }
+    // gettimeofday(&end, NULL);
+    // seconds = end.tv_sec - start.tv_sec;
+    // useconds = end.tv_usec - start.tv_usec;
+    // time_sample_grid += seconds * 1000000 + useconds / 1000000.0;
 
     return grid;
 }
@@ -131,61 +151,46 @@ unsigned char **sample_grid(ppm_image *image, int step_x, int step_y, unsigned c
 // type of contour which corresponds to each subgrid. It determines the binary value of each
 // sample fragment of the original image and replaces the pixels in the original image with
 // the pixels of the corresponding contour image accordingly.
-void march(ppm_image *image, unsigned char **grid, ppm_image **contour_map, int step_x, int step_y) {
+void march(ppm_image *image, unsigned char **grid, ppm_image **contour_map, int step_x, int step_y, int thread_id, int number_of_threads, pthread_mutex_t *mutex) {
+    // gettimeofday(&start, NULL);
     int p = image->x / step_x;
     int q = image->y / step_y;
-
-    for (int i = 0; i < p; i++) {
-        for (int j = 0; j < q; j++) {
-            unsigned char k = 8 * grid[i][j] + 4 * grid[i][j + 1] + 2 * grid[i + 1][j + 1] + 1 * grid[i + 1][j];
-            update_image(image, contour_map[k], i * step_x, j * step_y);
-        }
-    }
-}
-
-void march_paralel(void *arg) {
-    thread_arg_t *thread_arg = (thread_arg_t *)arg;
-    ppm_image *image = thread_arg->image;
-    unsigned char **grid = thread_arg->grid;
-    ppm_image **contour_map = thread_arg->contour_map;
-    int step_x = thread_arg->step_x;
-    int step_y = thread_arg->step_y;
-    int thread_id = thread_arg->thread_id;
-    int thread_count = thread_arg->thread_count;
-
-    int p = image->x / step_x;
-    int start = thread_id * p / thread_count;
-    int end = MIN((thread_id + 1) * p / thread_count, p);
-
-    int q = image->y / step_y;
+    int start = thread_id * p / number_of_threads;
+    int end = MIN((thread_id + 1) * p / number_of_threads, p);
 
     for (int i = start; i < end; i++) {
         for (int j = 0; j < q; j++) {
+            pthread_mutex_lock(mutex);
             unsigned char k = 8 * grid[i][j] + 4 * grid[i][j + 1] + 2 * grid[i + 1][j + 1] + 1 * grid[i + 1][j];
             update_image(image, contour_map[k], i * step_x, j * step_y);
+            pthread_mutex_unlock(mutex);
         }
     }
-    pthread_exit(NULL);
+    // gettimeofday(&end, NULL);
+    // seconds = end.tv_sec - start.tv_sec;
+    // useconds = end.tv_usec - start.tv_usec;
+    // time_march += seconds * 1000000 + useconds / 1000000.0;
 }
 
 // Calls `free` method on the utilized resources.
-void free_resources(ppm_image *image, ppm_image **contour_map, unsigned char **grid, int step_x) {
+void free_resources(ppm_image *image, ppm_image **contour_map) {
     for (int i = 0; i < CONTOUR_CONFIG_COUNT; i++) {
         free(contour_map[i]->data);
         free(contour_map[i]);
     }
     free(contour_map);
 
-    for (int i = 0; i <= image->x / step_x; i++) {
-        free(grid[i]);
-    }
-    free(grid);
+    // for (int i = 0; i <= image->x / step_x; i++) {
+    //     free(grid[i]);
+    // }
+    // free(grid);
 
     free(image->data);
     free(image);
 }
 
 ppm_image *rescale_image(ppm_image *image) {
+    // gettimeofday(&start, NULL);
     uint8_t sample[3];
 
     // we only rescale downwards
@@ -223,8 +228,31 @@ ppm_image *rescale_image(ppm_image *image) {
 
     free(image->data);
     free(image);
-
+    // gettimeofday(&end, NULL);
+    // seconds = end.tv_sec - start.tv_sec;
+    // useconds = end.tv_usec - start.tv_usec;
+    // time_rescale_image += seconds * 1000000 + useconds / 1000000.0;
     return new_image;
+}
+
+void solve(void *arg) {
+    thread_arg_t *thread_arg = (thread_arg_t *)arg;
+    unsigned char **grid = sample_grid(thread_arg->image, 
+                                       thread_arg->step_x, 
+                                       thread_arg->step_y, 
+                                       thread_arg->sigma, 
+                                       thread_arg->thread_id, 
+                                       thread_arg->number_of_threads);
+    pthread_barrier_wait(thread_arg->barrier);
+    march(thread_arg->image, 
+          grid, 
+          thread_arg->contour_map, 
+          thread_arg->step_x, 
+          thread_arg->step_y, 
+          thread_arg->thread_id, 
+          thread_arg->number_of_threads,
+          thread_arg->mutex);
+    pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[]) {
@@ -233,10 +261,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int threads = atoi(argv[3]);
-    pthread_t tid[threads];
-    // pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    // pthread_mutex_init(&mutex, NULL);
+    pthread_barrier_t barrier;
+    pthread_mutex_t mutex;
+    int P = atoi(argv[3]);
+    pthread_t tid[P];
+    thread_arg_t thread_arg[P];
+    pthread_barrier_init(&barrier, NULL, P);
+    pthread_mutex_init(&mutex, NULL);
 
     ppm_image *image = read_ppm(argv[1]);
     int step_x = STEP;
@@ -248,39 +279,39 @@ int main(int argc, char *argv[]) {
     // 1. Rescale the image
     ppm_image *scaled_image = rescale_image(image);
 
-    // 2. Sample the grid
-    unsigned char **grid = sample_grid(scaled_image, step_x, step_y, SIGMA);
-
-    for(int i = 0; i < threads; i++) {
-        thread_arg_t *thread_arg = (thread_arg_t *)malloc(sizeof(thread_arg_t));
-        if (!thread_arg) {
-            fprintf(stderr, "Unable to allocate memory\n");
-            exit(1);
-        }
-        thread_arg->image = scaled_image;
-        thread_arg->grid = grid;
-        thread_arg->contour_map = contour_map;
-        thread_arg->step_x = step_x;
-        thread_arg->step_y = step_y;
-        thread_arg->thread_id = i;
-        thread_arg->thread_count = threads;
-        // thread_arg->mutex = &mutex;
-
-        pthread_create(&(tid[i]), NULL, (void*) march_paralel, (void*) thread_arg);
+    for(int i = 0; i < P; i++) {
+        thread_arg[i].image = scaled_image;
+        thread_arg[i].step_x = step_x;
+        thread_arg[i].step_y = step_y;
+        thread_arg[i].sigma = SIGMA;
+        thread_arg[i].contour_map = contour_map;
+        thread_arg[i].barrier = &barrier;
+        thread_arg[i].mutex = &mutex;
+        thread_arg[i].thread_id = i;
+        thread_arg[i].number_of_threads = P;
+        void *arg = (void*)&thread_arg[i];
+        pthread_create(&tid[i], NULL, (void*)solve, arg);
     }
-    
 
-    for(int i = 0; i < threads; i++) {
+    for(int i = 0; i < P; i++) {
         pthread_join(tid[i], NULL);
     }
-    // 3. March the squares
+    // // 2. Sample the grid
+    // unsigned char **grid = sample_grid(scaled_image, step_x, step_y, SIGMA);
+
+    // // 3. March the squares
     // march(scaled_image, grid, contour_map, step_x, step_y);
 
     // 4. Write output
     write_ppm(scaled_image, argv[2]);
 
-    free_resources(scaled_image, contour_map, grid, step_x);
-    // pthread_mutex_destroy(&mutex);
+    free_resources(scaled_image, contour_map);
+    pthread_barrier_destroy(&barrier);
+    // printf("time_init_countour_map: %lf sec\n", time_init_countour_map * 1000000);
+    // printf("time_update_image: %lf sec\n", time_update_image * 1000000);
+    // printf("time_sample_grid: %lf sec\n", time_sample_grid * 1000000);
+    // printf("time_march: %lf sec\n", time_march * 1000000);
+    // printf("time_rescale_image: %lf\n", time_rescale_image);
 
     return 0;
 }
