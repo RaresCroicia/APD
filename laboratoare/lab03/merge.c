@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+#include <time.h>
 
 int N;
 int P;
 int *v;
 int *vQSort;
 int *vNew;
+pthread_barrier_t barrier;
 
 void merge(int *source, int start, int mid, int end, int *destination) {
 	int iA = start;
@@ -92,7 +94,7 @@ void init()
 		exit(1);
 	}
 
-	srand(42);
+	srand(time(NULL));
 
 	for (i = 0; i < N; i++)
 		v[i] = rand() % N;
@@ -112,7 +114,16 @@ void *thread_function(void *arg)
 {
 	int thread_id = *(int *)arg;
 
-	// implementati aici merge sort paralel
+	int w, *a;
+	for (w = 1; w < N; w *= 2) {
+		for(int i = thread_id * w; i < N; i += 2 * w * P) {
+			merge(v, i, i + w, i + 2 * w, vNew);
+		}
+		pthread_barrier_wait(&barrier);
+		a = v;
+		v = vNew;
+		vNew = a;
+	}
 
 	pthread_exit(NULL);
 }
@@ -130,7 +141,7 @@ int main(int argc, char *argv[])
 	for (i = 0; i < N; i++)
 		vQSort[i] = v[i];
 	qsort(vQSort, N, sizeof(int), cmp);
-
+	pthread_barrier_init(&barrier, NULL, P);
 	// se creeaza thread-urile
 	for (i = 0; i < P; i++) {
 		thread_id[i] = i;
@@ -143,17 +154,8 @@ int main(int argc, char *argv[])
 	}
 
 	// merge sort clasic - trebuie paralelizat
-	int width, *aux;
-	for (width = 1; width < N; width = 2 * width) {
-		for (i = 0; i < N; i = i + 2 * width) {
-			merge(v, i, i + width, i + 2 * width, vNew);
-		}
-
-		aux = v;
-		v = vNew;
-		vNew = aux;
-	}
-
+	
+	pthread_barrier_destroy(&barrier);
 	print();
 
 	free(v);
