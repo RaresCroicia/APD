@@ -229,24 +229,6 @@ void func(void *arg) {
             break;
         }
 
-        // alloc memory for image
-        if(new_image == NULL) {
-            new_image = (ppm_image *)malloc(sizeof(ppm_image));
-            if (!new_image) {
-                fprintf(stderr, "Unable to allocate memory #1\n");
-                exit(1);
-            }
-            new_image->x = RESCALE_X;
-            new_image->y = RESCALE_Y;
-
-            new_image->data = (ppm_pixel*)malloc(new_image->x * new_image->y * sizeof(ppm_pixel));
-            if (!new_image->data) {
-                fprintf(stderr, "Unable to allocate memory #2\n");
-                exit(1);
-            }
-        }
-        pthread_barrier_wait(barrier);
-
         start = thread_id * new_image->x / thread_count;
         end = MIN((thread_id + 1) * new_image->x / thread_count, new_image->x);
         // use bicubic interpolation for scaling
@@ -389,7 +371,9 @@ int main(int argc, char *argv[]) {
     for(int i = 0; i < p; i++) {
         grid[i] = (unsigned char*)malloc((q + 1) * sizeof(unsigned char));
     }
-    ppm_image *new_image = NULL;
+    ppm_image *new_image = (ppm_image *)malloc(sizeof(ppm_image));
+    new_image->x = image->x;
+    new_image->y = image->y;
     for (int i = 0; i < P; i++) {
         thread_arg_t *thread_arg = (thread_arg_t *)malloc(sizeof(thread_arg_t));
         thread_arg->image = image;
