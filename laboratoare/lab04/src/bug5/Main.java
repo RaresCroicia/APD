@@ -25,6 +25,8 @@ public class Main {
                 e.printStackTrace();
             }
         }
+        System.out.println("valueA = " + valueA);
+        System.out.println("valueB = " + valueB);
         System.out.println("I finished");
     }
 }
