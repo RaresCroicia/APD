@@ -15,19 +15,13 @@
 #define RESCALE_Y               2048
 
 #define CLAMP(v, min, max) if(v < min) { v = min; } else if(v > max) { v = max; }
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MIN(a,b) (((a)<(b))?(a):(b))
 
 typedef struct {
-    ppm_image *image;
-    ppm_image **contour_map;
-    int step_x;
-    int step_y;
-    pthread_barrier_t *barrier;
+    ppm_image *original_image;
+    ppm_image *scaled_image;
     int thread_id;
-    int thread_count;
-    char *out_file;
-    unsigned char **grid;
-    ppm_image *new_image;
+    int P;
 } thread_arg_t;
 
 
@@ -205,158 +199,28 @@ ppm_image *rescale_image(ppm_image *image) {
     return new_image;
 }
 
-void func(void *arg) {
+void *func(void *arg) {
     thread_arg_t *thread_arg = (thread_arg_t *)arg;
     int thread_id = thread_arg->thread_id;
-    int thread_count = thread_arg->thread_count;
-    int step_x = thread_arg->step_x;
-    int step_y = thread_arg->step_y;
-    ppm_image *image = thread_arg->image;
-    ppm_image **contour_map = thread_arg->contour_map;
-    pthread_barrier_t *barrier = thread_arg->barrier;
-    char *out_file = thread_arg->out_file;
-    unsigned char **grid = thread_arg->grid;
-    ppm_image *new_image = thread_arg->new_image;
-
-    int start, end;
-
-    // rescale_image
+    int P = thread_arg->P;
+    ppm_image *original_image = thread_arg->original_image;
+    ppm_image *scaled_image = thread_arg->scaled_image;
+    
     uint8_t sample[3];
 
-    while(1) {
-        // we only rescale downwards
-        if (image->x <= RESCALE_X && image->y <= RESCALE_Y) {
-            break;
+    int start = thread_id * scaled_image->x / P;
+    int end = MIN((thread_id + 1) * scaled_image->x / P, scaled_image->x);
+    for (int i = start; i < end; i++) {
+        for (int j = 0; j < scaled_image->y; j++) {
+            float u = (float)i / (float)(scaled_image->x - 1);
+            float v = (float)j / (float)(scaled_image->y - 1);
+            sample_bicubic(original_image, u, v, sample);
+
+            scaled_image->data[i * scaled_image->y + j].red = sample[0];
+            scaled_image->data[i * scaled_image->y + j].green = sample[1];
+            scaled_image->data[i * scaled_image->y + j].blue = sample[2];
         }
-
-        // alloc memory for image
-        if(new_image == NULL) {
-            new_image = (ppm_image *)malloc(sizeof(ppm_image));
-            if (!new_image) {
-                fprintf(stderr, "Unable to allocate memory #1\n");
-                exit(1);
-            }
-            new_image->x = RESCALE_X;
-            new_image->y = RESCALE_Y;
-
-            new_image->data = (ppm_pixel*)malloc(new_image->x * new_image->y * sizeof(ppm_pixel));
-            if (!new_image->data) {
-                fprintf(stderr, "Unable to allocate memory #2\n");
-                exit(1);
-            }
-        }
-        pthread_barrier_wait(barrier);
-
-        start = thread_id * new_image->x / thread_count;
-        end = MIN((thread_id + 1) * new_image->x / thread_count, new_image->x);
-        // use bicubic interpolation for scaling
-        for (int i = start; i < end; i++) {
-            for (int j = 0; j < new_image->y; j++) {
-                float u = (float)i / (float)(new_image->x - 1);
-                float v = (float)j / (float)(new_image->y - 1);
-                sample_bicubic(image, u, v, sample);
-
-                new_image->data[i * new_image->y + j].red = sample[0];
-                new_image->data[i * new_image->y + j].green = sample[1];
-                new_image->data[i * new_image->y + j].blue = sample[2];
-            }
-        }
-        image = new_image;
-        image->data = new_image->data;
-        free(new_image->data);
-        free(new_image);
-        break;
     }
-    pthread_barrier_wait(barrier);
-
-    int p = image->x / step_x;
-    int q = image->y / step_y;
-
-    // // sample_grid
-    // if (grid == NULL) {
-    //     grid = (unsigned char **)malloc((p + 1) * sizeof(unsigned char*));
-    //     if (!grid) {
-    //         fprintf(stderr, "Unable to allocate memory #3\n");
-    //         exit(1);
-    //     }
-
-    //     for (int i = 0; i <= p; i++) {
-    //         grid[i] = (unsigned char *)malloc((q + 1) * sizeof(unsigned char));
-    //         if (!grid[i]) {
-    //             fprintf(stderr, "Unable to allocate memory #4\n");
-    //             exit(1);
-    //         }
-    //     }
-    // }
-    
-    // pthread_barrier_wait(barrier);
-    
-
-    
-    // start = thread_id * p / thread_count;
-    // end = MIN((thread_id + 1) * p / thread_count, p);
-
-    // for (int i = start; i < end; i++) {
-    //     for (int j = 0; j < q; j++) {
-    //         ppm_pixel curr_pixel = image->data[i * step_x * image->y + j * step_y];
-
-    //         unsigned char curr_color = (curr_pixel.red + curr_pixel.green + curr_pixel.blue) / 3;
-
-    //         if (curr_color > SIGMA) {
-    //             grid[i][j] = 0;
-    //         } else {
-    //             grid[i][j] = 1;
-    //         }
-    //     }
-    // }
-    // grid[p][q] = 0;
-
-    // // last sample points have no neighbors below / to the right, so we use pixels on the
-    // // last row / column of the input image for them
-    // for (int i = start; i < end; i++) {
-    //     ppm_pixel curr_pixel = image->data[i * step_x * image->y + image->x - 1];
-
-    //     unsigned char curr_color = (curr_pixel.red + curr_pixel.green + curr_pixel.blue) / 3;
-
-    //     if (curr_color > SIGMA) {
-    //         grid[i][q] = 0;
-    //     } else {
-    //         grid[i][q] = 1;
-    //     }
-    // }
-    // for (int j = 0; j < q; j++) {
-    //     ppm_pixel curr_pixel = image->data[(image->x - 1) * image->y + j * step_y];
-
-    //     unsigned char curr_color = (curr_pixel.red + curr_pixel.green + curr_pixel.blue) / 3;
-
-    //     if (curr_color > SIGMA) {
-    //         grid[p][j] = 0;
-    //     } else {
-    //         grid[p][j] = 1;
-    //     }
-    // }
-
-    // pthread_barrier_wait(barrier);
-
-    // p = image->x / step_x;
-    // q = image->y / step_y;
-
-    // start = thread_id * p / thread_count;
-    // end = MIN((thread_id + 1) * p / thread_count, p);
-
-    // for (int i = start; i < end; i++) {
-    //     for (int j = 0; j < q; j++) {
-    //         unsigned char k = 8 * grid[i][j] + 4 * grid[i][j + 1] + 2 * grid[i + 1][j + 1] + 1 * grid[i + 1][j];
-    //         update_image(image, contour_map[k], i * step_x, j * step_y);
-    //     }
-    // }
-
-    // pthread_barrier_wait(barrier);
-    // if(thread_id == 0) {
-    //     write_ppm(image, out_file);
-    //     free_resources(image, contour_map, grid, step_x);
-    // }
-    
     pthread_exit(NULL);
 }
 
@@ -366,48 +230,65 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int P = atoi(argv[3]);
-    pthread_t tid[P];
     ppm_image *image = read_ppm(argv[1]);
     int step_x = STEP;
     int step_y = STEP;
-    int imX = image->x;
-    int imY = image->y;
-    if(image->x > RESCALE_X || image->y > RESCALE_Y) {
-        imX = RESCALE_X;
-        imY = RESCALE_Y;
-    }
 
     // 0. Initialize contour map
     ppm_image **contour_map = init_contour_map();
-    pthread_barrier_t barrier;
-    pthread_barrier_init(&barrier, NULL, P);
-    unsigned char **grid;
-    int p = imX / step_x;
-    int q = imY / step_y;
-    grid = (unsigned char**)malloc((p + 1) * sizeof(unsigned char*));
-    for(int i = 0; i < p; i++) {
-        grid[i] = (unsigned char*)malloc((q + 1) * sizeof(unsigned char));
-    }
-    ppm_image *new_image = NULL;
-    for (int i = 0; i < P; i++) {
-        thread_arg_t *thread_arg = (thread_arg_t *)malloc(sizeof(thread_arg_t));
-        thread_arg->image = image;
-        thread_arg->contour_map = contour_map;
-        thread_arg->step_x = step_x;
-        thread_arg->step_y = step_y;
-        thread_arg->barrier = &barrier;
-        thread_arg->thread_id = i;
-        thread_arg->thread_count = P;
-        thread_arg->out_file = argv[2];
-        thread_arg->grid = grid;
-        thread_arg->new_image = new_image;
-        pthread_create(&tid[i], NULL, (void*)func, (void*)thread_arg);
+    int P = atoi(argv[3]);
+    pthread_t tid[P];
+    ppm_image *scaled_image;
+    // 1. Rescale the image
+    if (!(image->x <= RESCALE_X && image->y <= RESCALE_Y)) {
+        scaled_image = (ppm_image *)malloc(sizeof(ppm_image));
+        if (!scaled_image) {
+            fprintf(stderr, "Unable to allocate memory\n");
+            exit(1);
+        }
+        scaled_image->x = RESCALE_X;
+        scaled_image->y = RESCALE_Y;
+
+        scaled_image->data = (ppm_pixel*)malloc(scaled_image->x * scaled_image->y * sizeof(ppm_pixel));
+        if (!scaled_image) {
+            fprintf(stderr, "Unable to allocate memory\n");
+            exit(1);
+        }
+
+        for(int i = 0; i < P; i++) {
+            thread_arg_t *thread_arg = (thread_arg_t *)malloc(sizeof(thread_arg_t));
+            if (!thread_arg) {
+                fprintf(stderr, "Unable to allocate memory\n");
+                exit(1);
+            }
+            thread_arg->original_image = image;
+            thread_arg->scaled_image = scaled_image;
+            thread_arg->thread_id = i;
+            thread_arg->P = P;
+            pthread_create(&(tid[i]), NULL, func, thread_arg);
+        }
+
+        for(int i = 0; i < P; i++) {
+            pthread_join(tid[i], NULL);
+        }
+
+        free(image->data);
+        free(image);
+
+    } else {
+        scaled_image = image;
     }
 
-    for (int i = 0; i < P; i++) {
-        pthread_join(tid[i], NULL);
-    }
+    // 2. Sample the grid
+    unsigned char **grid = sample_grid(scaled_image, step_x, step_y, SIGMA);
+
+    // 3. March the squares
+    march(scaled_image, grid, contour_map, step_x, step_y);
+
+    // 4. Write output
+    write_ppm(scaled_image, argv[2]);
+
+    free_resources(scaled_image, contour_map, grid, step_x);
 
     return 0;
 }
