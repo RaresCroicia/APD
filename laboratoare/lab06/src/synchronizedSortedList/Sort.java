@@ -14,6 +14,11 @@ public class Sort extends Thread {
 
     @Override
     public void run() {
+        try {
+            Main.semaphore.acquire();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
         Collections.sort(list);
     }
 }

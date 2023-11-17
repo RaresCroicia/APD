@@ -11,10 +11,8 @@ public class MyThread implements Runnable {
 	}
 
 	private void addValue(int key, int value) {
-		if (hashMap.containsKey(key)) {
+		if(hashMap.putIfAbsent(key, value) != null) {
 			hashMap.put(key, hashMap.get(key) + value);
-		} else {
-			hashMap.put(key, value);
 		}
 	}
 	

@@ -23,6 +23,7 @@ public class Reader extends Thread {
             while (scanner.hasNextInt()) {
                 list.add(scanner.nextInt());
             }
+            Main.semaphore.release();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }

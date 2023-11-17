@@ -32,8 +32,13 @@ public class ReadTreePart implements Runnable {
 
 				treeNode.addChild(new TreeNode(child));
 			}
+			Main.barrier.await();
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
-		}
-	}
+		} catch (BrokenBarrierException e) {
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
