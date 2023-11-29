@@ -1,5 +1,7 @@
 package task3;
 
+import java.util.concurrent.ExecutorService;
+
 public class Main {
     public static int N = 4;
 
@@ -38,6 +40,7 @@ public class Main {
     }
     public static void main(String[] args) {
         int[] graph = new int[N];
-        queens(graph, 0);
+        ExecutorService executorService = java.util.concurrent.Executors.newFixedThreadPool(4);
+        executorService.submit(new QueensProblem(executorService, graph, 0));
     }
 }

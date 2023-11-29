@@ -1,6 +1,7 @@
 package task4;
 
 import java.util.ArrayList;
+import java.util.concurrent.ForkJoinPool;
 
 public class Main {
     static int[][] graph = { { 0, 1 }, { 0, 4 }, { 0, 5 }, { 1, 0 }, { 1, 2 }, { 1, 6 }, { 2, 1 }, { 2, 3 }, { 2, 7 },
@@ -31,6 +32,8 @@ public class Main {
         ArrayList<Integer> partialPath = new ArrayList<>();
         // se vor calcula toate caile de la nodul 0 la nodul 3 in cadrul grafului
         partialPath.add(0);
-        getPath(partialPath, 3);
+        ForkJoinPool pool = new ForkJoinPool(4);
+        pool.invoke(new FindPath(partialPath, 3));
+        pool.shutdown();
     }
 }

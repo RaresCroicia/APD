@@ -1,5 +1,7 @@
 package task2;
 
+import java.util.concurrent.ExecutorService;
+
 public class Main {
     static int N = 10;
     static int COLORS = 3;
@@ -49,6 +51,7 @@ public class Main {
 
     public static void main(String[] args) {
         int[] colors = new int[N];
-        colorGraph(colors, 0);
+        ExecutorService executorService = java.util.concurrent.Executors.newFixedThreadPool(4);
+        executorService.submit(new ColorGraph(executorService, colors, 0));
     }
 }

@@ -1,6 +1,9 @@
 package task1;
 
 import java.util.ArrayList;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
     static int[][] graph = { { 0, 1 }, { 0, 4 }, { 0, 5 }, { 1, 0 }, { 1, 2 }, { 1, 6 }, { 2, 1 }, { 2, 3 }, { 2, 7 },
@@ -29,8 +32,12 @@ public class Main {
 
     public static void main(String[] args) {
         ArrayList<Integer> partialPath = new ArrayList<>();
+        AtomicInteger inQueue = new AtomicInteger(0);
+        ExecutorService executorService = java.util.concurrent.Executors.newFixedThreadPool(4);
         // se vor calcula toate caile de la nodul 0 la nodul 3 in cadrul grafului
         partialPath.add(0);
-        getPath(partialPath, 3);
+        executorService.submit(new FindPath(executorService, partialPath, inQueue, 3));
+//        getPath(partialPath, 3);
+
     }
 }
