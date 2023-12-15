@@ -16,16 +16,31 @@ int main (int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &old_rank); // The current process ID / Rank.
 
     // Split the MPI_COMM_WORLD in small groups.
+    new_size = GROUP_SIZE;
+    new_rank = old_rank % GROUP_SIZE;
+    MPI_Comm_split(MPI_COMM_WORLD, old_rank / new_size, new_rank, &custom_group);
 
     printf("Rank [%d] / size [%d] in MPI_COMM_WORLD and rank [%d] / size [%d] in custom group.\n",
             old_rank, old_size, new_rank, new_size);
 
     // Send the rank to the next process.
-
-    // Receive the rank.
-
-    printf("Process [%d] from group [%d] received [%d].\n", new_rank,
-            old_rank / GROUP_SIZE, recv_rank);
+    if(new_rank == 0) {
+        MPI_Send(&new_rank, 1, MPI_INT, new_rank + 1, 0, custom_group);
+        printf("Process [%d] from group [%d] sent [%d].\n", new_rank, old_rank / new_size, new_rank);
+        MPI_Recv(&recv_rank, 1, MPI_INT, new_size - 1, 0, custom_group, MPI_STATUS_IGNORE);
+        printf("Process [%d] from group [%d] received [%d].\n", new_rank, old_rank / new_size, recv_rank);
+        printf("Ring for group [%d] finished.\n", old_rank / new_size);
+    } else if(new_rank == new_size - 1) {
+        MPI_Recv(&recv_rank, 1, MPI_INT, new_rank - 1, 0, custom_group, MPI_STATUS_IGNORE);
+        printf("Process [%d] from group [%d] received [%d].\n", new_rank, old_rank / new_size, recv_rank);
+        MPI_Send(&new_rank, 1, MPI_INT, 0, 0, custom_group);
+        printf("Process [%d] from group [%d] sent [%d].\n", new_rank, old_rank / new_size, new_rank);
+    } else {
+        MPI_Recv(&recv_rank, 1, MPI_INT, new_rank - 1, 0, custom_group, MPI_STATUS_IGNORE);
+        printf("Process [%d] from group [%d] received [%d].\n", new_rank, old_rank / new_size, recv_rank);
+        MPI_Send(&new_rank, 1, MPI_INT, new_rank + 1, 0, custom_group);
+        printf("Process [%d] from group [%d] sent [%d].\n", new_rank, old_rank / new_size, new_rank);
+    }
 
     MPI_Finalize();
 }
