@@ -55,6 +55,7 @@ enum return_code readFiles(FILE* file) {
 }
 
 enum return_code sendToTracker() {
+    MPI_Send(&ownedFilesCount, 1, MPI_INT, TRACKER_RANK, 0, MPI_COMM_WORLD);
     for(int i = 0; i < ownedFilesCount; i++) {
         MPI_Send(ownedFiles[i].filename, strlen(ownedFiles[i].filename), MPI_CHAR, TRACKER_RANK, 0, MPI_COMM_WORLD);
         MPI_Send(&ownedFiles[i].no_chunks, 1, MPI_INT, TRACKER_RANK, 0, MPI_COMM_WORLD);
@@ -172,7 +173,6 @@ void peer(int numtasks, int rank) {
  
 int main (int argc, char *argv[]) {
     int numtasks, rank;
- 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
