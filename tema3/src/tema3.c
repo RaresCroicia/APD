@@ -10,6 +10,8 @@
 #define HASH_SIZE 32
 #define MAX_CHUNKS 100
 
+#define ACK 69420
+
 const char* getFileName(int rank) {
     static char filename[MAX_FILENAME];
     sprintf(filename, "in%d.txt", rank);
@@ -117,6 +119,13 @@ void tracker(int numtasks, int rank) {
             printf("Tracker: %s\n", trackerFiles[i].files[j].filename);
         }
     }
+    printf("Tracker: informatii primite de la toti clientii\n");
+    printf("Tracker: trimitere confirmare catre toti clientii\n");
+    int confirm_message = ACK;
+    for(int i = 1; i < numtasks; i++) {
+        MPI_Send(&confirm_message, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+    }
+    printf("Tracker: confirmare trimisa catre toti clientii\n");
 }
 
 void peer(int numtasks, int rank) {
@@ -145,6 +154,14 @@ void peer(int numtasks, int rank) {
         exit(-1);
     }
     printf("Peer %d: informatii trimise catre tracker\n", rank);
+    printf("Waiting for tracker to confirm...\n");
+    int confirm_message;
+    MPI_Recv(&confirm_message, 1, MPI_INT, TRACKER_RANK, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if(confirm_message != ACK) {
+        printf("Tracker-ul nu a confirmat sau a confirmat gresit!\n");
+        exit(-1);
+    }
+    printf("Peer %d: Tracker-ul a confirmat!\n", rank);
 
     r = pthread_create(&download_thread, NULL, download_thread_func, (void *) &rank);
     if (r) {
