@@ -81,10 +81,11 @@ int leader_chosing(int rank, int nProcesses) {
 	
 	/* Executam acest pas pana ajungem la convergenta */
 	for (int k = 0; k < CONVERGENCE_COEF; k++) {
-		/* TODO1: Pentru fiecare vecin, vom trimite liderul pe care il cunosc 
-		* 		 si voi astepta un mesaj de la orice vecin
-		* 		 Daca liderul e mai mare decat al meu, il actualizez pe al meu
-		*/
+		for(int i = 0; i < num_neigh; i++) {
+			MPI_Send(&leader, 1, MPI_INT, neigh[i], 0, MPI_COMM_WORLD);
+			MPI_Recv(&q, 1, MPI_INT, neigh[i], 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			leader = fmax(leader, q);
+		}
 	}
 
 	MPI_Barrier(MPI_COMM_WORLD);
