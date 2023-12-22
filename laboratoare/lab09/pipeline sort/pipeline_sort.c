@@ -64,12 +64,32 @@ int main(int argc, char * argv[]) {
 			vQSort[i] = v[i];
 		qsort(vQSort, nProcesses - 1, sizeof(int), cmp);
 
+		for(i = 1; i < nProcesses; i++) {
+			MPI_Send(&v[i - 1], 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+		}
+
 		// TODO sort the vector v
 
 
 		displayVector(v);
 		compareVectors(v, vQSort);
 	} else {
+		int myValue = -1;
+		int value;
+		MPI_Recv(&value, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		if(value == -1) {
+			myValue = value;
+		}
+		else {
+			if(value < myValue) {
+				int toSend = myValue;
+				myValue = value;
+				MPI_Send(&toSend, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			}
+			else {
+				MPI_Send(&value, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			}
+		}
 		// TODO sort the vector v
 		
 	}

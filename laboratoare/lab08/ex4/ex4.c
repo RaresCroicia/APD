@@ -18,19 +18,23 @@ int main (int argc, char *argv[])
     int value;
 
     if (rank == ROOT) {
-
         // The ROOT process receives an element from any source.
         // Prints the element and the source. HINT: MPI_Status.
-
+        MPI_Status status;
+        for(int i = 0; i < numtasks - 1; i++) {
+            MPI_Recv(&value, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+            printf("Process [%d] received %d from process [%d].\n", rank, value, status.MPI_SOURCE);
+        }
     } else {
 
         // Generate a random number.
         srand(time(NULL));
-        value = rand() % (rank * 50 + 1);
+        value = rand() % (rank * 50 + 10);
 
         printf("Process [%d] send %d.\n", rank, value);
 
         // Sends the value to the ROOT process.
+        MPI_Send(&value, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD);
 
     }
 
