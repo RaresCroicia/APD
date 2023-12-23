@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define TRACKER_RANK 0
 #define MAX_FILES 10
@@ -11,6 +12,13 @@
 #define MAX_CHUNKS 100
 
 #define ACK 69420
+#define NACK 42069
+#define REQUEST_HASH 1000000
+#define REQUEST_STATUS 1000001
+#define QUIT_MESSAGE 1000002
+
+#define DOWNLOAD_TAG 0
+#define UPLOAD_TAG 1
 
 const char* getFileName(int rank) {
     static char filename[MAX_FILENAME];
@@ -39,6 +47,8 @@ tracker_info trackerFiles[MAX_FILES];
 char wantedFiles[MAX_FILES][MAX_FILENAME];
 int wantedFilesCount = 0;
 int ownedFilesCount = 0;
+bool waiting = false;
+
 
 enum return_code readFiles(FILE* file) {
     fscanf(file, "%d", &ownedFilesCount);
@@ -65,7 +75,6 @@ enum return_code sendToTracker() {
         printf("Sent: %d\n", ownedFiles[i].no_chunks);
         for(int j = 0; j < ownedFiles[i].no_chunks; j++) {
             MPI_Send(ownedFiles[i].chunks[j], HASH_SIZE, MPI_CHAR, TRACKER_RANK, 0, MPI_COMM_WORLD);
-            // printf("Sent: %s\n", ownedFiles[i].chunks[j]);
         }
     }
     return SUCCESS;
@@ -97,10 +106,11 @@ enum return_code receiveFromClient(int rank) {
     return SUCCESS;    
 }
 
-
 void *download_thread_func(void *arg)
 {
     int rank = *(int*) arg;
+
+
 
     return NULL;
 }
@@ -108,7 +118,44 @@ void *download_thread_func(void *arg)
 void *upload_thread_func(void *arg)
 {
     int rank = *(int*) arg;
-
+    int type;
+    bool running = true;
+    while (running) {
+        MPI_Status status;
+        MPI_Recv(&type, 1, MPI_INT, MPI_ANY_SOURCE, UPLOAD_TAG, MPI_COMM_WORLD, &status);
+        waiting = true;
+        if(type == REQUEST_HASH) {
+            char hash[HASH_SIZE];
+            MPI_Recv(hash, HASH_SIZE, MPI_CHAR, status.MPI_SOURCE, UPLOAD_TAG, MPI_COMM_WORLD, &status);
+            waiting = false;
+            printf("Peer %d: cerere hash %s from %d\n", rank, hash, status.MPI_SOURCE);
+            for(int i = 0; i < ownedFilesCount; i++) {
+                for(int j = 0; j < ownedFiles[i].no_chunks; j++) {
+                    if(strcmp(ownedFiles[i].chunks[j], hash) == 0) {
+                        printf("Peer %d: am gasit hash %s\n", rank, hash);
+                        int response = ACK;
+                        MPI_Send(&response, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+                        printf("Peer %d: am trimis numele fisierului %s\n", rank, ownedFiles[i].filename);
+                        break;
+                    }
+                }
+            }
+            int response = NACK;
+            MPI_Send(&response, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+        }
+        else if (type == REQUEST_STATUS) {
+            if (waiting) {
+                int response = ACK;
+                MPI_Send(&response, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+            } else {
+                int response = NACK;
+                MPI_Send(&response, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+            }
+        }
+        else if (type == QUIT_MESSAGE) {
+            running = false;
+        }
+    }
     return NULL;
 }
 
