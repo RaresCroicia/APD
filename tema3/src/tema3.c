@@ -60,9 +60,12 @@ enum return_code sendToTracker() {
     MPI_Send(&ownedFilesCount, 1, MPI_INT, TRACKER_RANK, 0, MPI_COMM_WORLD);
     for(int i = 0; i < ownedFilesCount; i++) {
         MPI_Send(ownedFiles[i].filename, strlen(ownedFiles[i].filename), MPI_CHAR, TRACKER_RANK, 0, MPI_COMM_WORLD);
+        printf("Sent: %s\n", ownedFiles[i].filename);
         MPI_Send(&ownedFiles[i].no_chunks, 1, MPI_INT, TRACKER_RANK, 0, MPI_COMM_WORLD);
+        printf("Sent: %d\n", ownedFiles[i].no_chunks);
         for(int j = 0; j < ownedFiles[i].no_chunks; j++) {
             MPI_Send(ownedFiles[i].chunks[j], HASH_SIZE, MPI_CHAR, TRACKER_RANK, 0, MPI_COMM_WORLD);
+            // printf("Sent: %s\n", ownedFiles[i].chunks[j]);
         }
     }
     return SUCCESS;
@@ -78,7 +81,9 @@ enum return_code receiveFromClient(int rank) {
     MPI_Recv(&no_files, 1, MPI_INT, rank, 0, MPI_COMM_WORLD, &status);
     for(int i = 0; i < no_files; i++) {
         MPI_Recv(filename, MAX_FILENAME, MPI_CHAR, rank, 0, MPI_COMM_WORLD, &status);
+        printf("Tracker: %s\n", filename);
         MPI_Recv(&no_chunks, 1, MPI_INT, rank, 0, MPI_COMM_WORLD, &status);
+        printf("Tracker: %d\n", no_chunks);
         for(int j = 0; j < no_chunks; j++) {
             MPI_Recv(chunks[j], HASH_SIZE, MPI_CHAR, rank, 0, MPI_COMM_WORLD, &status);
         }
@@ -190,7 +195,15 @@ void peer(int numtasks, int rank) {
  
 int main (int argc, char *argv[]) {
     int numtasks, rank;
-    MPI_Init(&argc, &argv);
+    
+    int provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+    
+    if (provided < MPI_THREAD_MULTIPLE) {
+        fprintf(stderr, "MPI nu are suport pentru multi-threading\n");
+        exit(-1);
+    }
+
     MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
