@@ -15,18 +15,30 @@ int main (int argc, char *argv[])
     srand(42);
     int num1[SIZE], num2[SIZE];
  
+    MPI_Request request[2];
+
     if (rank == 0) {
         for (int i = 0; i < SIZE; i++) {
             num1[i] = 100;
         }
-        MPI_Send(&num1, SIZE, MPI_INT, 1, 0, MPI_COMM_WORLD);
-        MPI_Recv(&num2, SIZE, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        // MPI_Send(&num1, SIZE, MPI_INT, 1, 0, MPI_COMM_WORLD);
+        // MPI_Recv(&num2, SIZE, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Isend(&num1, SIZE, MPI_INT, 1, 0, MPI_COMM_WORLD, &request[0]);
+        MPI_Irecv(&num2, SIZE, MPI_INT, 1, 0, MPI_COMM_WORLD, &request[1]);
+        MPI_Waitall(2, request, MPI_STATUSES_IGNORE);
+        printf("Process %d received number %d\n", rank, num2[0]);
+        printf("Process %d sent number %d\n", rank, num1[0]);
     } else {
         for (int i = 0; i < SIZE; i++) {
             num2[i] = 200;
         }
-        MPI_Send(&num2, SIZE, MPI_INT, 0, 0, MPI_COMM_WORLD);
-        MPI_Recv(&num1, SIZE, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        // MPI_Send(&num2, SIZE, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        // MPI_Recv(&num1, SIZE, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Isend(&num2, SIZE, MPI_INT, 0, 0, MPI_COMM_WORLD, &request[0]);
+        MPI_Irecv(&num1, SIZE, MPI_INT, 0, 0, MPI_COMM_WORLD, &request[1]);
+        MPI_Waitall(2, request, MPI_STATUSES_IGNORE);
+        printf("Process %d received number %d\n", rank, num1[0]);
+        printf("Process %d sent number %d\n", rank, num2[0]);
     }
 
     MPI_Finalize();

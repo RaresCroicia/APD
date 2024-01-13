@@ -24,22 +24,32 @@ int main(int argc, char **argv) {
     if (rank == 0) {
     	MPI_File_write_shared(out, "h", 1, MPI_CHAR, MPI_STATUS_IGNORE);
     }
-    	
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+
     if (rank == 1) {
         MPI_File_write_shared(out, "e", 1, MPI_CHAR, MPI_STATUS_IGNORE);
     }
     
+    MPI_Barrier(MPI_COMM_WORLD);
+
     if (rank == 2) {
         MPI_File_write_shared(out, "l", 1, MPI_CHAR, MPI_STATUS_IGNORE);
     }
+
+    MPI_Barrier(MPI_COMM_WORLD);
     
     if (rank == 3) {
         MPI_File_write_shared(out, "l", 1, MPI_CHAR, MPI_STATUS_IGNORE);
     }
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
     if (rank == 4) {
         MPI_File_write_shared(out, "o", 1, MPI_CHAR, MPI_STATUS_IGNORE);
     }
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
     MPI_File_close(&out);
     printf("Process [%d] finished writing\n", rank);
